@@ -1,16 +1,22 @@
-from fastapi import FastAPI
-from fastapi.responses import HTMLResponse
+from fastapi import FastAPI, Request
+from fastapi.staticfiles import StaticFiles
+from fastapi.responses import FileResponse
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.templating import Jinja2Templates
 from capture.tshark_capture import TsharkCapture
 from analysis.cipher_parser import CipherParser
 from analysis.risk_engine import RiskEngine
 from scoring.pqcri_engine import PQCRIEngine
+from reports.report_generator import ReportGenerator
 
 app = FastAPI(
     title="PQCRI Analyzer",
     description="Post-Quantum Cryptography Readiness Index Assessment Framework",
     version="1.0.0"
 )
+app.mount("/static", StaticFiles(directory="static"), name="static")
+templates = Jinja2Templates(directory="templates")
+
 
 # CORS Configuration
 app.add_middleware(
@@ -25,6 +31,7 @@ capture_engine = TsharkCapture()
 parser = CipherParser()
 risk_engine = RiskEngine()
 pqcri_engine = PQCRIEngine()
+report_generator = ReportGenerator()
 # =====================================================
 # HOME
 # =====================================================
@@ -81,16 +88,16 @@ def analyze():
     ) as file:
         data = file.read()
 
-    algorithms = parser.parse(data)
+    parsed_data = parser.parse(data)
 
-    vulnerability = (
-        risk_engine.calculate_vulnerability_score(
-            algorithms
-        )
-    )
     return {
-        "algorithms":
-        algorithms,
+
+        "handshake_algorithms":
+            parsed_data["handshake_algorithms"],
+
+        "data_exchange_algorithms":
+            parsed_data["data_exchange_algorithms"]
+
     }
 
 @app.get("/risk")
@@ -103,12 +110,10 @@ def risk_analysis():
     ) as file:
         data = file.read()
     # Extract algorithms
-    algorithms = parser.parse(
-        data
-    )
-    # Calculate vulnerability
+    parsed_data = parser.parse(data)
+
     result = risk_engine.calculate_vulnerability_score(
-        algorithms
+        parsed_data
     )
     # Add risk category
     risk_level = risk_engine.classify_risk(
@@ -116,7 +121,11 @@ def risk_analysis():
     )
 
     return {
-        "detected_algorithms": algorithms,
+        "handshake_algorithms":
+        parsed_data["handshake_algorithms"],
+
+        "data_exchange_algorithms":
+        parsed_data["data_exchange_algorithms"],
         "vulnerability_score":
             result["vulnerability_score"],
         "risk_level":
@@ -136,27 +145,25 @@ def calculate_pqcri():
     ) as file:
         data = file.read()
     # Extract algorithms
-    algorithms = parser.parse(
-        data
-    )
+    parsed_data = parser.parse(data)
     # Parameter A
     A = pqcri_engine.asset_discovery_score(
-        algorithms
+        parsed_data
     )
     # Parameter V
     risk_result = risk_engine.calculate_vulnerability_score(
-        algorithms
+        parsed_data
     )
     V = risk_result[
         "vulnerability_score"
     ]
     # Parameter M
     M = pqcri_engine.migration_readiness_score(
-        algorithms
+        parsed_data
     )
     # Parameter C
     C = pqcri_engine.compliance_score(
-        algorithms
+        parsed_data
     )
     # Parameter H
     H = pqcri_engine.hndl_risk_score(
@@ -174,7 +181,11 @@ def calculate_pqcri():
         pqcri
     )
     return {
-        "algorithms":algorithms,
+        "handshake_algorithms":
+        parsed_data["handshake_algorithms"],
+
+        "data_exchange_algorithms":
+        parsed_data["data_exchange_algorithms"],
         "parameters":{
             "A":A,
             "V":V,
@@ -198,69 +209,65 @@ def scan():
 # SIMPLE DASHBOARD
 # =====================================================
 
-@app.get("/dashboard", response_class=HTMLResponse)
-def dashboard():
+@app.get("/dashboard")
+def dashboard(request: Request):
+    return templates.TemplateResponse(
+        "index.html",
+        {
+            "request": request
+        }
+    )
+    
+@app.get("/download-report")
+def download_report():
 
-    html = """
-    <!DOCTYPE html>
-    <html>
-    <head>
-        <title>PQCRI Dashboard</title>
-        <style>
-            body{
-                font-family: Arial;
-                margin:40px;
-                background:#f4f4f4;
-            }
+    with open("capture_data.txt", "r", errors="ignore") as file:
+        data = file.read()
 
-            .card{
-                background:white;
-                padding:20px;
-                border-radius:10px;
-                box-shadow:0 0 10px rgba(0,0,0,0.1);
-                width:600px;
-            }
+    parsed_data = parser.parse(data)
 
-            h1{
-                color:#333;
-            }
+    # Calculate scores
+    A = pqcri_engine.asset_discovery_score(parsed_data)
 
-            p{
-                font-size:18px;
-            }
-        </style>
-    </head>
-    <body>
+    risk_result = risk_engine.calculate_vulnerability_score(parsed_data)
+    V = risk_result["vulnerability_score"]
 
-        <div class="card">
+    M = pqcri_engine.migration_readiness_score(parsed_data)
 
-            <h1>PQCRI Analyzer</h1>
+    C = pqcri_engine.compliance_score(parsed_data)
 
-            <p>
-                Post-Quantum Cryptography
-                Readiness Assessment Framework
-            </p>
+    H = pqcri_engine.hndl_risk_score("social")
 
-            <hr>
+    pqcri = pqcri_engine.calculate_pqcri(A, V, M, C, H)
 
-            <p>Status: Running</p>
+    classification = pqcri_engine.classify_pqcri(pqcri)
 
-            <p>
-                Available APIs:
-            </p>
+    # Create the algorithms dictionary expected by ReportGenerator
+    algorithms = {
+        "tls_version": parsed_data["handshake_algorithms"]["tls_version"],
+        "cipher_suite": parsed_data["handshake_algorithms"]["cipher_suite"],
+        "key_exchange": parsed_data["handshake_algorithms"]["key_exchange"],
+        "digital_signature": parsed_data["handshake_algorithms"]["signature"],
+        "encryption": parsed_data["data_exchange_algorithms"]["encryption"],
+        "integrity": parsed_data["data_exchange_algorithms"]["integrity"],
+        "hash": parsed_data["data_exchange_algorithms"]["hash"],
+    }
 
-            <ul>
-                <li>/</li>
-                <li>/health</li>
-                <li>/capture</li>
-                <li>/analyze</li>
-                <li>/scan</li>
-            </ul>
+    # Generate the PDF
+    report_generator.create_pdf_report(
+        application_name="https://example.com",
+        algorithms=algorithms,
+        A=A,
+        V=V,
+        M=M,
+        C=C,
+        H=H,
+        pqcri=pqcri,
+        classification=classification
+    )
 
-        </div>
-
-    </body>
-    </html>
-    """
-
-    return html
+    return FileResponse(
+        "PQCRI_Report.pdf",
+        media_type="application/pdf",
+        filename="PQCRI_Report.pdf"
+    )
