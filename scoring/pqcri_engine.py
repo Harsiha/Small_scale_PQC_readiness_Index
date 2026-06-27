@@ -10,56 +10,88 @@ class PQCRIEngine:
             "H": 0.15
         }
 
-    def asset_discovery_score(self, algorithms):
+    def asset_discovery_score(self, parsed_data):
 
-        score = min(
-            len(algorithms) * 20,
-            100
-        )
+        handshake = parsed_data["handshake_algorithms"]
 
-        return score
+        data = parsed_data["data_exchange_algorithms"]
 
-    def migration_readiness_score(self, algorithms):
+        count = 0
 
-        score = 80
+        for value in handshake.values():
 
-        if "RSA" in algorithms:
-            score -= 20
+            if value:
+                count += 1
 
-        if "ECDHE" in algorithms:
-            score -= 10
+        for value in data.values():
 
-        if "ECDSA" in algorithms:
-            score -= 10
+            if value:
+                count += 1
 
-        return max(score, 0)
+        return min(count * 15, 100)
 
-    def compliance_score(self, algorithms):
+    def migration_readiness_score(self, parsed_data):
+
+        handshake = parsed_data["handshake_algorithms"]
 
         score = 100
 
-        if "SHA1" in algorithms:
-            score -= 30
+        key_exchange = str(
+            handshake.get("key_exchange", "")
+        )
 
-        if "RSA" in algorithms:
+        signature = str(
+            handshake.get("signature", "")
+        )
+        if "RSA" in signature.upper():
             score -= 20
+        if "ECDHE" in key_exchange.upper():
+            score -= 10
+        if "ECDH" in key_exchange.upper():
+            score -= 10
+        if "ECDSA" in signature.upper():
+            score -= 10
+        if "KYBER" in key_exchange.upper():
+            score += 5
+        if "ML-KEM" in key_exchange.upper():
+            score += 5
+        if "DILITHIUM" in signature.upper():
+            score += 5
+        if "ML-DSA" in signature.upper():
+            score += 5
+        return min(max(score, 0), 100)
 
+    def compliance_score(self, parsed_data):
+        score = 100
+        handshake = parsed_data["handshake_algorithms"]
+        data = parsed_data["data_exchange_algorithms"]
+        signature = str(
+            handshake.get("signature", "")
+        )
+        encryption = str(
+            data.get("encryption", "")
+        )
+        hashing = str(
+            data.get("hash", "")
+        )
+        if "RSA" in signature.upper():
+            score -= 20
+        if hashing.upper() == "SHA1":
+            score -= 30
+        if encryption.upper() == "AES-128-GCM":
+            score -= 10
         return max(score, 0)
-
     def hndl_risk_score(
         self,
         app_type="social"
     ):
-
         risk_map = {
-
             "banking": 40,
             "healthcare": 30,
             "social": 70,
             "utility": 90,
             "education": 80
         }
-
         return risk_map.get(
             app_type,
             70
@@ -73,39 +105,26 @@ class PQCRIEngine:
         C,
         H
     ):
-
         score = (
-
             self.weights["A"] * A +
-
             self.weights["V"] * V +
-
             self.weights["M"] * M +
-
             self.weights["C"] * C +
-
             self.weights["H"] * H
         )
-
         return round(score, 2)
-
     def classify_pqcri(
         self,
         score
     ):
-
         if score >= 90:
             return "Excellent"
-
         elif score >= 80:
             return "Good"
-
         elif score >= 70:
             return "Satisfactory"
-
         elif score >= 60:
             return "Needs Improvement"
-
         elif score >= 40:
             return "High Risk"
         else:

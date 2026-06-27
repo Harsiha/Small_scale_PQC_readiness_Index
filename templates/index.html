@@ -1,0 +1,40 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>PQCRI Dashboard</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/static/css/style.css">
+</head>
+<body>
+<header class="topbar"><h1>PQCRI Dashboard</h1><span class="status online">● Running</span></header>
+<main class="container">
+<section class="hero">
+<h2>Post Quantum Cryptography Readiness Index</h2>
+<p>Capture TLS traffic, analyze handshake and data exchange algorithms, and calculate risk.</p>
+<button id="captureBtn">Start Capture</button>
+<button id="downloadBtn">Download Report</button>
+</section>
+<section class="grid">
+<div class="card"><h3>Handshake Algorithms</h3>
+<table>
+<tr><td>TLS Version</td><td id="tlsVersion">-</td></tr>
+<tr><td>Cipher Suite</td><td id="cipherSuite">-</td></tr>
+<tr><td>Key Exchange</td><td id="keyExchange">-</td></tr>
+<tr><td>Signature</td><td id="signature">-</td></tr>
+</table></div>
+<div class="card"><h3>Data Exchange</h3>
+<table>
+<tr><td>Encryption</td><td id="encryption">-</td></tr>
+<tr><td>Integrity</td><td id="integrity">-</td></tr>
+<tr><td>Hash</td><td id="hash">-</td></tr>
+</table></div>
+<div class="card"><h3>Risk</h3><div id="riskScore">--</div><div id="riskClass">Waiting...</div></div>
+<div class="card"><h3>PQCRI</h3><div id="pqcriScore">--</div><div id="pqcriClass">Waiting...</div></div>
+</section>
+<section class="card"><h3>Detected Algorithms</h3><div id="algorithmBadges"></div></section>
+</main>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<script src="/static/js/script.js"></script>    
+</body></html>
